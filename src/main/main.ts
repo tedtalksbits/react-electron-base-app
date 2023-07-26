@@ -14,6 +14,9 @@ import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
+import connection from './sql';
+import { FlashcardDTO } from 'renderer/features/flashcards/types';
+import crudRepository from './crudRepository';
 
 class AppUpdater {
   constructor() {
@@ -26,10 +29,109 @@ class AppUpdater {
 let mainWindow: BrowserWindow | null = null;
 
 ipcMain.on('ipc-example', async (event, arg) => {
-  const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
-  console.log(msgTemplate(arg));
-  event.reply('ipc-example', msgTemplate('pong'));
+  event.reply('ipc-example', `event reply ${arg}`);
 });
+
+ipcMain.on('get-decks', async (event, tableName) => {
+  try {
+    const rows = await crudRepository.selectAll('decks');
+    console.log(rows);
+    event.reply('get-decks-response', { data: rows });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+ipcMain.on('create-deck', async (event, data, refetchQuery: string) => {
+  console.log('create-deck', data);
+  console.log('refetchQuery', refetchQuery);
+  try {
+    await crudRepository.createOne('decks', data);
+    const [rows] = await connection.execute(refetchQuery);
+    event.reply('create-deck-response', { data: rows });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+ipcMain.on('delete-deck', async (event, id, refetchQuery: string) => {
+  console.log('delete-deck', id);
+  console.log('refetchQuery', refetchQuery);
+  try {
+    await crudRepository.deleteOne('decks', id);
+    await crudRepository.deleteMany('flashcards', { deck_id: id });
+    const [rows] = await connection.execute(refetchQuery);
+    event.reply('delete-deck-response', { data: rows });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+ipcMain.on('update-deck', async (event, id, data, refetchQuery: string) => {
+  console.log('update-deck', data);
+  try {
+    await crudRepository.updateOne('decks', id, data);
+    const [rows] = await connection.execute(refetchQuery);
+    event.reply('update-deck-response', { data: rows });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+ipcMain.on('get-flashcards-by-deckId', async (event, tableName, deckId) => {
+  console.log('get-flashcards-by-deckId', tableName, deckId);
+  try {
+    const rows = await crudRepository.select('flashcards', ['*'], {
+      deck_id: deckId,
+    });
+    console.log(rows);
+    event.reply('get-flashcards-by-deckId-response', { data: rows });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+ipcMain.on(
+  'create-flashcard',
+  async (event, flashcard: FlashcardDTO, refetchQuery: string) => {
+    console.log('create-flashcard', flashcard);
+    try {
+      await crudRepository.createOne('flashcards', flashcard);
+      const [rows] = await connection.execute(refetchQuery);
+      event.reply('create-flashcard-response', { data: rows });
+    } catch (error) {
+      console.log(error);
+    }
+  }
+);
+
+ipcMain.on(
+  'delete-flashcard',
+  async (event, flashcardId, refetchQuery: string) => {
+    console.log('delete-flashcard', flashcardId);
+    try {
+      await crudRepository.deleteOne('flashcards', flashcardId);
+      const [rows] = await connection.execute(refetchQuery);
+      event.reply('delete-flashcard-response', { data: rows });
+    } catch (error) {
+      console.log(error);
+    }
+  }
+);
+
+ipcMain.on(
+  'update-flashcard',
+  async (event, id, data, refetchQuery: string) => {
+    console.log('update-flashcard', data);
+    try {
+      await crudRepository.updateOne('flashcards', id, data);
+      const [rows] = await connection.execute(refetchQuery);
+      event.reply('update-flashcard-response', { data: rows });
+    } catch (error) {
+      console.log(error);
+    }
+  }
+);
 
 if (process.env.NODE_ENV === 'production') {
   const sourceMapSupport = require('source-map-support');
